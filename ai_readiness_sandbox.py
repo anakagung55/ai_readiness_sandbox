@@ -1,3 +1,6 @@
+from streamlit_gsheets import GSheetsConnection
+import pandas as pd
+from datetime import datetime
 import streamlit as st
 import google.generativeai as genai
 import json
@@ -79,12 +82,46 @@ if "pillar_scores" not in st.session_state:
     }
 if "assessment_complete" not in st.session_state:
     st.session_state.assessment_complete = False
+if "assessment_complete" not in st.session_state:
+    st.session_state.assessment_complete = False
+
+# Tambahkan baris ini untuk menyimpan email user
+if "user_email" not in st.session_state:
+    st.session_state.user_email = None
+
+# ==========================================
+# 3.5. EMAIL GATE / LOGIN SCREEN
+# ==========================================
+if not st.session_state.user_email:
+    # Bikin tampilan agak ke tengah biar rapi
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.image("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRwfocMaLYiwVSGhGc8mb7SjZ6uGzlcDHU62w&s", width=200)
+        st.markdown("## AI Readiness Diagnostic")
+        st.write("Discover your organisation's AI maturity across 6 key pillars. Please enter your work email to begin the assessment.")
+        
+        with st.form("login_form"):
+            email_input = st.text_input("Work Email Address", placeholder="name@company.com")
+            submit_button = st.form_submit_button("Start Assessment", use_container_width=True)
+            
+            if submit_button:
+                # Validasi email sederhana pakai regex (lu udah import 're' di atas)
+                if email_input and re.match(r"[^@]+@[^@]+\.[^@]+", email_input):
+                    st.session_state.user_email = email_input
+                    st.rerun() # Refresh halaman untuk menghilangkan form login
+                else:
+                    st.error("⚠️ Please enter a valid email address to proceed.")
+                    
+    # st.stop() adalah KUNCI. Ini menghentikan eksekusi kode di bawahnya
+    # sehingga Sidebar dan Chat UI tidak akan dirender sampai st.stop() ini dilewati.
+    st.stop()
 
 # ==========================================
 # 4. SIDEBAR: REAL-TIME SCORE ACCUMULATION
 # ==========================================
 with st.sidebar:
-    st.image("https://www.thebluerock.com.au/wp-content/themes/bluerock/assets/img/bluerock-logo.svg", width=150)
+    st.image("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRwfocMaLYiwVSGhGc8mb7SjZ6uGzlcDHU62w&s", width=150)
     st.markdown("### 📊 AI Readiness Pillars")
     st.caption("Live Signal Accumulation Engine")
     st.write("---")
@@ -110,7 +147,46 @@ for msg in st.session_state.display_messages:
 
 # Matikan input chat jika asesmen sudah selesai
 if st.session_state.assessment_complete:
-    st.success("✅ Assessment Complete! In production, this will trigger the n8n webhook to generate the PDF and log the prospect into the CRM.")
+    st.success("✅ Assessment Complete! Generating your custom roadmap...")
+    
+    # LOGIC UNTUK NGE-SAVE KE GOOGLE SHEETS
+    if "logged_to_db" not in st.session_state:
+        with st.spinner("Saving results to BlueRock Database..."):
+            try:
+                # 1. Panggil koneksi ke Google Sheets
+                conn = st.connection("gsheets", type=GSheetsConnection)
+                
+                # 2. Siapkan URL Google Sheet lu (Ganti dengan URL file "BlueRock AI POC Logs" milik lu)
+                SHEET_URL = "https://docs.google.com/spreadsheets/d/1NUyjSYvtvrlcWoFMXUg4_dxZHoEmyJmpjBk1nq4WV-M/edit"
+                
+                # 3. Rangkum history chat jadi satu teks panjang
+                transcript = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in st.session_state.display_messages])
+                
+                # 4. Susun data baru yang mau di-insert
+                scores = st.session_state.pillar_scores
+                new_data = pd.DataFrame([{
+                    "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "Email": st.session_state.user_email,
+                    "Score_Strategy": scores.get("Strategy & Vision", 0),
+                    "Score_Data": scores.get("Data Maturity", 0),
+                    "Score_Tech": scores.get("Technical Infrastructure", 0),
+                    "Score_Talent": scores.get("Talent & Skills", 0),
+                    "Score_Gov": scores.get("Governance & Risk", 0),
+                    "Score_Culture": scores.get("Culture & Adoption", 0),
+                    "Chat_Transcript": transcript
+                }])
+                
+                # 5. Baca data lama, gabung sama data baru, lalu timpa balik ke Sheets
+                existing_data = conn.read(spreadsheet=SHEET_URL, usecols=list(range(9)))
+                updated_data = pd.concat([existing_data, new_data], ignore_index=True)
+                conn.update(spreadsheet=SHEET_URL, data=updated_data)
+                
+                # Tandai biar nggak nge-save double kalau layar kereload
+                st.session_state.logged_to_db = True
+                st.success("📝 All diagnostic data successfully logged to database. Safe to close this window.")
+                
+            except Exception as e:
+                st.error(f"Database Error: Failed to save logs. {e}")
 else:
     if prompt := st.chat_input("Enter your response..."):
         st.session_state.display_messages.append({"role": "user", "content": prompt})
