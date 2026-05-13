@@ -121,12 +121,16 @@ if prompt := st.chat_input("Enter your response..."):
     with st.chat_message("assistant"):
         with st.spinner("Analyzing signals and adapting logic..."):
             try:
-                # Call Gemini API
-                response = model.generate_content(st.session_state.chat_history)
+                # KUNCI 1: Paksa API kembalikan format JSON murni
+                response = model.generate_content(
+                    st.session_state.chat_history,
+                    generation_config=genai.GenerationConfig(
+                        response_mime_type="application/json"
+                    )
+                )
                 raw_text = response.text.strip()
                 
-                # Cleanup JSON markdown if present
-                clean_json = re.sub(r'```json\n|```\n?', '', raw_text).strip()
+                # KUNCI 2: Pakai strict=False biar aman dari karakter aneh
                 parsed_data = json.loads(raw_text, strict=False)
                 
                 agent_reply = parsed_data.get("agent_reply", "I'm sorry, I couldn't process that.")
@@ -135,12 +139,14 @@ if prompt := st.chat_input("Enter your response..."):
                 # Update State
                 st.write(agent_reply)
                 st.session_state.display_messages.append({"role": "assistant", "content": agent_reply})
-                st.session_state.chat_history.append({"role": "model", "parts": [clean_json]})
+                st.session_state.chat_history.append({"role": "model", "parts": [raw_text]})
                 st.session_state.pillar_scores = new_scores
                 
                 # Rerun to update sidebar
                 st.rerun()
                 
+            except json.JSONDecodeError:
+                st.error("Engine Error: Format JSON dari AI tidak valid. Silakan klik Reset Assessment.")
+                print(f"RAW FAILED TEXT: {raw_text}")
             except Exception as e:
-                st.error(f"Engine Error: Failed to parse JSON. {e}")
-                print(raw_text) # For debugging
+                st.error(f"Engine Error: {e}")
