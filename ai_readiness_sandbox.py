@@ -186,7 +186,7 @@ if st.session_state.assessment_complete:
                 st.session_state.logged_to_db = True
                 st.success("📝 All diagnostic data successfully logged to database. Safe to close this window.")
                 try:
-                    webhook_url = "https://agungajus02.app.n8n.cloud/webhook-test/c0c19033-bf10-44fe-a606-7ad7e0df795a"
+                    webhook_url = "https://agungajus02.app.n8n.cloud/webhook/c0c19033-bf10-44fe-a606-7ad7e0df795a"
                     payload = {
                         "email": st.session_state.user_email,
                         "scores": st.session_state.pillar_scores,
