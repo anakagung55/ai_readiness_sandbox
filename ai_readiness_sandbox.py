@@ -1,3 +1,4 @@
+import requests
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime
@@ -184,7 +185,17 @@ if st.session_state.assessment_complete:
                 # Tandai biar nggak nge-save double kalau layar kereload
                 st.session_state.logged_to_db = True
                 st.success("📝 All diagnostic data successfully logged to database. Safe to close this window.")
-                
+                try:
+                    webhook_url = "https://agungajus02.app.n8n.cloud/webhook-test/c0c19033-bf10-44fe-a606-7ad7e0df795a"
+                    payload = {
+                        "email": st.session_state.user_email,
+                        "scores": st.session_state.pillar_scores,
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }
+                    requests.post(webhook_url, json=payload)
+                    st.info("🚀 Data sent to automation engine for PDF generation!")
+                except Exception as e:
+                    st.error(f"Webhook Error: {e}")
             except Exception as e:
                 st.error(f"Database Error: Failed to save logs. {e}")
 else:
